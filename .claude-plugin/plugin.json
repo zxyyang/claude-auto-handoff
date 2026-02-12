@@ -1,0 +1,16 @@
+{
+  "name": "claude-auto-handoff",
+  "version": "1.0.0",
+  "description": "自动上下文交接插件 — 在上下文接近容量时自动保存记忆并引导无缝恢复",
+  "author": {
+    "name": "zxyang",
+    "url": "https://github.com/zxyang"
+  },
+  "homepage": "https://github.com/zxyang/claude-auto-handoff",
+  "repository": "https://github.com/zxyang/claude-auto-handoff",
+  "license": "MIT",
+  "keywords": ["context", "handoff", "memory", "auto-save", "中文"],
+  "commands": ["./commands/"],
+  "skills": ["./skills/"],
+  "hooks": "./hooks/hooks.json"
+}

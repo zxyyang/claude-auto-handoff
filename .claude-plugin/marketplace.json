@@ -1,0 +1,24 @@
+{
+  "name": "claude-auto-handoff",
+  "owner": {
+    "name": "zxyang",
+    "email": "zxyang@users.noreply.github.com"
+  },
+  "metadata": {
+    "description": "自动上下文交接插件 — 解决 Claude Code 长会话记忆丢失问题"
+  },
+  "plugins": [
+    {
+      "name": "claude-auto-handoff",
+      "source": "./",
+      "description": "在上下文接近容量时自动保存完整记忆并引导无缝恢复，对用户完全透明无感",
+      "author": { "name": "zxyang" },
+      "homepage": "https://github.com/zxyang/claude-auto-handoff",
+      "repository": "https://github.com/zxyang/claude-auto-handoff",
+      "license": "MIT",
+      "keywords": ["context", "handoff", "memory", "auto-save"],
+      "category": "workflow",
+      "tags": ["context-management", "memory", "handoff", "auto-save", "中文"]
+    }
+  ]
+}
