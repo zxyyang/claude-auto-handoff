@@ -14,11 +14,11 @@
 
 ```bash
 # 方式 1：通过 marketplace 安装（推荐）
-/plugin marketplace add zxyang/claude-auto-handoff
+/plugin marketplace add zxyyang/claude-auto-handoff
 /plugin install claude-auto-handoff
 
 # 方式 2：手动安装
-git clone https://github.com/zxyang/claude-auto-handoff.git \
+git clone https://github.com/zxyyang/claude-auto-handoff.git \
   ~/.claude/plugins/cache/claude-auto-handoff/claude-auto-handoff/1.0.0
 ```
 
