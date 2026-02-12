@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * SessionStart hook — 静默写入默认配置，无输出
+ * SessionStart hook — 静默初始化配置和状态
  */
-const { readStdin, writeConfig, readConfig } = require('../scripts/lib');
+const { readStdin, readConfig, writeConfig, writeState } = require('../scripts/lib');
 
 async function main() {
   await readStdin();
-  // 每次新会话重置配置为默认值
-  writeConfig({ enabled: true, threshold: 1.5 });
+  // 读取现有配置（自动补全新字段），写回
+  writeConfig(readConfig());
+  writeState({ status: 'idle' });
   process.exit(0);
 }
 

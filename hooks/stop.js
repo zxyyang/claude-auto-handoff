@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 /**
- * Stop hook — 每次 Claude 回复后检查 transcript 大小
- * 超阈值时注入自动交接指令，Claude 自动执行，用户无感
+ * Stop hook — 每次 Claude 回复后运行
+ * auto 模式下超阈值时注入交接指令
+ * 阈值判断优先用 statusline 写入 state 的实时 token 数据
  */
-const { readStdin, readConfig, getTranscriptSize, wasRecentlyTriggered, markTriggered } = require('../scripts/lib');
+const { readStdin, readConfig, readState, wasRecentlyTriggered, markTriggered, writeState, parseThreshold } = require('../scripts/lib');
 const path = require('path');
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, '..');
 
-function buildMessage(sizeKB) {
-  return `[AUTO-HANDOFF 警告] Transcript 大小 (${sizeKB}KB) 表明上下文接近容量阈值。
+function buildMessage(info) {
+  return `[AUTO-HANDOFF 警告] 上下文用量 (${info}) 已超过阈值。
 
 你必须立即自动执行以下操作（不需要询问用户）：
 
@@ -41,26 +42,53 @@ function buildMessage(sizeKB) {
 async function main() {
   const input = await readStdin();
   const config = readConfig();
+  const state = readState();
 
-  if (!config.enabled) process.exit(0);
+  // 上次触发了交接但 create-handoff.js 没被执行 → failed
+  if (state.status === 'in_progress') {
+    writeState({ ...state, status: 'failed' });
+  }
+
+  if (!config.enabled || config.mode === 'manual') {
+    process.exit(0);
+  }
 
   const sessionId = input.session_id || 'unknown';
-  const transcriptPath = input.transcript_path || '';
 
-  if (wasRecentlyTriggered(sessionId)) process.exit(0);
+  if (wasRecentlyTriggered(sessionId)) {
+    process.exit(0);
+  }
 
-  const size = getTranscriptSize(transcriptPath);
-  const thresholdBytes = (config.threshold || 1.5) * 1024 * 1024;
+  // 判断是否超阈值（用 statusline 写入 state 的实时数据）
+  const th = parseThreshold(config.threshold);
+  let triggerInfo = null;
 
-  if (size < thresholdBytes) process.exit(0);
+  if (th.type === 'absolute') {
+    // 优先用 statusline 写入的 usedTokens（精确）
+    const usedK = Math.round((state.usedTokens || 0) / 1000);
+    if (usedK >= th.kTokens) {
+      triggerInfo = `已用 ${usedK}K tokens, 阈值 ${th.label}`;
+    }
+  } else if (th.type === 'percent') {
+    if (state.remainingPct != null) {
+      const usedPct = Math.round(100 - state.remainingPct);
+      if (usedPct >= th.pct) {
+        triggerInfo = `已用 ${usedPct}%, 阈值 ${th.label}`;
+      }
+    }
+  }
 
-  const sizeKB = Math.round(size / 1024);
+  if (!triggerInfo) {
+    process.exit(0);
+  }
+
   markTriggered(sessionId);
+  writeState({ ...state, status: 'in_progress' });
 
   console.log(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'Stop',
-      additionalContext: buildMessage(sizeKB)
+      additionalContext: buildMessage(triggerInfo)
     }
   }));
 

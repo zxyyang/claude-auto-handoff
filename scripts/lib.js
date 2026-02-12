@@ -11,6 +11,7 @@ const { execSync } = require('child_process');
 const HOME = os.homedir();
 const CACHE_DIR = path.join(HOME, '.claude', 'cache');
 const CONFIG_FILE = path.join(CACHE_DIR, 'auto-handoff-config.json');
+const STATE_FILE = path.join(CACHE_DIR, 'auto-handoff-state.json');
 const COOLDOWN_SECONDS = 300;
 
 // ============ 基础工具 ============
@@ -34,18 +35,69 @@ function readStdin() {
 
 // ============ 配置管理 ============
 
+const DEFAULT_CONFIG = {
+  enabled: true,
+  mode: 'auto',          // auto | manual
+  threshold: '180k',     // 支持 "180k"/"120k" 或 "80%"/"70%" 或用户自定义如 "150k"
+};
+
+// 解析阈值字符串
+// 返回 { type: 'absolute', mb: 1.5, label: '180K' }
+// 或   { type: 'percent', pct: 80, label: '80%' }
+function parseThreshold(threshold) {
+  const s = String(threshold).trim().toLowerCase();
+  const pctMatch = s.match(/^(\d+)%$/);
+  if (pctMatch) {
+    return { type: 'percent', pct: Number(pctMatch[1]), label: `${pctMatch[1]}%` };
+  }
+  const kMatch = s.match(/^(\d+)k$/);
+  if (kMatch) {
+    const k = Number(kMatch[1]);
+    return { type: 'absolute', kTokens: k, label: `${k}K` };
+  }
+  // 兼容旧配置（纯数字 = MB）
+  const num = Number(s);
+  if (!isNaN(num) && num > 0) {
+    const k = Math.round((num * 1024) / 8.5);
+    return { type: 'absolute', kTokens: k, label: `${k}K` };
+  }
+  return { type: 'absolute', kTokens: 180, label: '180K' };
+}
+
 function readConfig() {
   try {
     if (fs.existsSync(CONFIG_FILE)) {
-      return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+      const cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+      // 兼容旧配置：threshold 为数字时转为字符串
+      if (typeof cfg.threshold === 'number') {
+        const k = Math.round((cfg.threshold * 1024) / 8.5);
+        cfg.threshold = `${k}k`;
+      }
+      return { ...DEFAULT_CONFIG, ...cfg };
     }
   } catch {}
-  return { enabled: true, threshold: 1.5 };
+  return { ...DEFAULT_CONFIG };
 }
 
 function writeConfig(config) {
   ensureDir(CACHE_DIR);
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(config));
+}
+
+// ============ 运行时状态 ============
+
+function readState() {
+  try {
+    if (fs.existsSync(STATE_FILE)) {
+      return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    }
+  } catch {}
+  return { status: 'idle', ts: 0 };
+}
+
+function writeState(state) {
+  ensureDir(CACHE_DIR);
+  fs.writeFileSync(STATE_FILE, JSON.stringify({ ...state, ts: Date.now() }));
 }
 
 // ============ Transcript 检测 ============
@@ -210,8 +262,8 @@ function listHandoffs(cwd) {
 // ============ 导出 ============
 
 module.exports = {
-  HOME, CACHE_DIR, CONFIG_FILE,
-  ensureDir, readStdin, readConfig, writeConfig,
-  getTranscriptSize, wasRecentlyTriggered, markTriggered,
+  HOME, CACHE_DIR, CONFIG_FILE, STATE_FILE, DEFAULT_CONFIG,
+  ensureDir, readStdin, readConfig, writeConfig, readState, writeState,
+  parseThreshold, wasRecentlyTriggered, markTriggered,
   getGitInfo, generateHandoffDoc, listHandoffs
 };

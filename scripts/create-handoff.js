@@ -3,7 +3,7 @@
  * 交接文档生成器 CLI
  * 用法: node create-handoff.js [slug] [--cwd /path]
  */
-const { generateHandoffDoc } = require('./lib');
+const { generateHandoffDoc, readState, writeState } = require('./lib');
 
 const args = process.argv.slice(2);
 let slug = 'auto-handoff';
@@ -15,4 +15,6 @@ for (let i = 0; i < args.length; i++) {
 }
 
 const filepath = generateHandoffDoc(cwd, slug);
+// 标记交接完成
+writeState({ ...readState(), status: 'completed' });
 console.log(filepath);

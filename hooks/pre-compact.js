@@ -3,12 +3,12 @@
  * PreCompact hook — compact 前无条件触发交接（最后防线）
  * 此时上下文即将被压缩，必须立即保存
  */
-const { readStdin, wasRecentlyTriggered, markTriggered, getTranscriptSize } = require('../scripts/lib');
+const { readStdin, readState, wasRecentlyTriggered, markTriggered, writeState } = require('../scripts/lib');
 const path = require('path');
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, '..');
 
-function buildMessage(sizeKB) {
+function buildMessage() {
   return `[AUTO-HANDOFF 紧急] 上下文即将被压缩（compact），信息将会丢失！
 
 你必须立即自动执行以下操作（不需要询问用户）：
@@ -41,17 +41,16 @@ function buildMessage(sizeKB) {
 async function main() {
   const input = await readStdin();
   const sessionId = input.session_id || 'unknown';
-  const transcriptPath = input.transcript_path || '';
 
   if (wasRecentlyTriggered(sessionId)) process.exit(0);
 
-  const sizeKB = Math.round(getTranscriptSize(transcriptPath) / 1024);
   markTriggered(sessionId);
+  writeState({ ...readState(), status: 'in_progress' });
 
   console.log(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'PreCompact',
-      additionalContext: buildMessage(sizeKB)
+      additionalContext: buildMessage()
     }
   }));
 
