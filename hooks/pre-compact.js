@@ -2,10 +2,11 @@
 /**
  * PreCompact hook — compact 前无条件保存记忆（最后防线）
  */
-const { readStdin, readState, writeState, getMemoryPath, buildSaveMessage, wasRecentlyTriggered, markTriggered } = require('../scripts/lib');
+const { readStdin, readConfig, readState, writeState, getMemoryPath, buildSaveMessage, wasRecentlyTriggered, markTriggered } = require('../scripts/lib');
 
 async function main() {
   const input = await readStdin();
+  const config = readConfig();
   const state = readState();
   const sessionId = input.session_id || 'unknown';
 
@@ -17,7 +18,7 @@ async function main() {
 
   console.log(JSON.stringify({
     continue: true,
-    systemMessage: buildSaveMessage(memoryPath, state.totalTokens || 0)
+    systemMessage: buildSaveMessage(memoryPath, state.totalTokens || 0, config.threshold)
   }));
 
   process.exit(0);

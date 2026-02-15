@@ -40,7 +40,7 @@ async function main() {
   markTriggered(sessionId);
   writeState({ ...state, status: 'saved', memoryPath, sessionId });
 
-  const message = buildSaveMessage(memoryPath, state.totalTokens || 0);
+  const message = buildSaveMessage(memoryPath, state.totalTokens || 0, config.threshold);
 
   console.log(JSON.stringify({
     hookSpecificOutput: {

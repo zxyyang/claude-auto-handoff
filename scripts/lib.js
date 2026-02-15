@@ -127,22 +127,32 @@ function getMemoryPath(cwd, sessionId) {
 }
 
 /**
- * 根据上下文总量计算记忆行数上限
- * 公式：totalTokens * 5% / 33（每行约 33 tokens）
- * 最小 200 行，最大 2000 行
+ * 根据上下文总量和阈值计算记忆 token 预算
+ * 基准 = min(阈值对应的 tokens, 模型总量)
+ * 预算 = 基准 × 40%
+ * 最小 10K，最大 500K
  */
-function calcMemoryLimit(totalTokens) {
-  if (!totalTokens || totalTokens <= 0) return 500;
-  return Math.max(200, Math.min(2000, Math.round(totalTokens * 0.05 / 33)));
+function calcMemoryBudget(totalTokens, threshold) {
+  const th = parseThreshold(threshold || '70%');
+  let budgetBase;
+  if (th.type === 'percent') {
+    budgetBase = (totalTokens || 200000) * (th.pct / 100);
+  } else {
+    budgetBase = Math.min(th.kTokens * 1000, totalTokens || 200000);
+  }
+  const budget = Math.round(budgetBase * 0.4);
+  return Math.max(10000, Math.min(500000, budget));
 }
 
 /**
  * 构建「静默保存记忆」指令 — 使用后台 agent，不阻塞用户任务
  * @param {string} memoryPath - 记忆文件路径
- * @param {number} totalTokens - 模型上下文总量（用于动态计算行数上限）
+ * @param {number} totalTokens - 模型上下文总量
+ * @param {string} threshold - 用户配置的阈值
  */
-function buildSaveMessage(memoryPath, totalTokens) {
-  const maxLines = calcMemoryLimit(totalTokens);
+function buildSaveMessage(memoryPath, totalTokens, threshold) {
+  const budget = calcMemoryBudget(totalTokens, threshold);
+  const approxLines = Math.round(budget / 33);
   return `[AUTO-HANDOFF] 请立即使用 Task 工具启动一个后台 agent 保存会话记忆，不要阻塞当前回复。
 
 Task 参数：
@@ -154,64 +164,80 @@ Task 参数：
 ---BEGIN MEMORY PROMPT---
 将当前会话的完整记忆写入 ${memoryPath}（使用 Write 工具，如果内容超过 150 行则先 Write 前 50 行再用 Edit 追加）。
 
-目标：恢复后和没压缩一样，零信息丢失。行数上限 ${maxLines} 行，尽可能写满。
+## 预算
+
+你有 ${budget} tokens（约 ${approxLines} 行）的记忆预算。尽可能写满，宁可多写也不要遗漏任何重要信息。
+
+## 核心目标
+
+恢复后和没压缩一样，零信息丢失。这不是摘要，是完整的会话记忆快照。
+
+## 写入原则（参考 claude-mem 的 observation 理念）
+
+1. 提取原始数据，不要泛泛总结 — 贴实际代码而非"修改了代码"，贴完整错误信息而非"遇到了错误"
+2. 保留因果链 — 不只记录结果，记录"因为 X 所以做了 Y，导致 Z"
+3. 保留用户的原始指令和关键反馈 — 用户说的原话比你的理解更重要
+4. 文件操作要记录路径和关键内容 — 读了什么文件、改了哪些行、写入了什么
+
+## 记忆结构（8 段，全部必填）
 
 # 会话记忆快照
 
-按以下 8 个段落结构写入，每段都必须填写，越详细越好：
-
 ## 1. 当前任务和进度
-用 3-5 句话描述：正在做什么、整体目标是什么、当前进度百分比、在哪里停下的、为什么停下。
+用 3-5 句话描述：正在做什么、整体目标、当前进度、在哪里停下的、为什么停下。
 
-## 2. 关键上下文（架构和约定）
-这是最关键的段落，compact 后靠这段恢复全局理解：
-- 项目架构的关键发现（目录结构、模块关系、数据流）
-- 代码中不明显但重要的约定（命名规则、设计模式、配置方式）
-- 业务逻辑的关键理解（核心流程、边界条件、隐含假设）
+## 2. 关键上下文 — 架构和约定
+compact 后靠这段恢复全局理解，要极度详细：
+- 项目架构（目录结构、模块关系、数据流）
+- 代码约定（命名规则、设计模式、配置方式）
+- 业务逻辑（核心流程、边界条件、隐含假设）
 - 环境和工具链的特殊配置
+- 关键文件的作用和相互关系
 
 ## 3. 已完成的工作
 列出本次会话完成的所有工作，每项包括：
-- 修改的文件路径
-- 具体改了什么（不是"更新了文件"，而是"在 auth.js:42 添加了 JWT 刷新逻辑"）
+- 修改的文件路径和具体行号
+- 具体改了什么（贴关键代码 diff，不是描述）
 - 为什么这样改
 
 ## 4. 关键决策和原因
-每个重要决策记录为一行：
+每个重要决策：
 - 决策内容
 - 考虑过的其他方案
 - 最终选择的原因
-- 如果推翻这个决策会影响什么
+- 推翻这个决策会影响什么
 
 ## 5. 失败的尝试和踩坑（极其重要）
-这是防止下一个 agent 重复犯错的关键段落：
-- 试过什么方案、为什么失败
-- 遇到的具体错误信息和堆栈
-- 如何绕过或解决的
-- 哪些看起来可行但实际有坑的路径
+防止重复犯错，每个失败记录：
+- 试了什么方案
+- 完整的错误信息（贴原文，不要截断）
+- 为什么失败（根因分析）
+- 最终如何绕过或解决
+- 看起来可行但实际有坑的路径
 
 ## 6. 关键代码片段和接口
-不是描述代码，而是直接贴关键代码：
-- 核心函数签名和参数说明
-- 重要的数据结构/接口定义
-- 关键配置项
-- API 端点和请求/响应格式
-用 markdown 代码块包裹，标注文件路径和行号。
+直接贴代码（用 markdown 代码块，标注文件路径:行号）：
+- 核心函数的完整签名和关键实现
+- 重要的数据结构和接口定义
+- 关键配置项和环境变量
+- API 端点的请求/响应格式
+- hook 的输入输出格式
 
 ## 7. 当前状态
-- 什么功能已经能正常工作
-- 什么功能还有问题（具体错误信息）
-- 测试状态（哪些通过、哪些失败）
+- 什么功能已经能正常工作（附验证方式）
+- 什么功能还有问题（贴具体错误信息）
+- 测试状态（哪些通过、哪些失败、失败原因）
 - 未提交的改动（git status）
+- 运行时状态（配置文件内容、缓存状态）
 
-## 8. 恢复指令（下一步）
-按优先级列出具体可执行的步骤，每步包括：
+## 8. 恢复指令
+按优先级列出具体步骤，每步包括：
 - 要操作的文件路径和行号
-- 具体要做什么
-- 预期结果是什么
-- 可能遇到的问题
+- 具体要做什么（贴代码或命令）
+- 预期结果
+- 可能遇到的问题和解决方案
 
-"继续开发"不是好的恢复指令。"在 src/hooks/post-tool-use.js:43 修改 buildSaveMessage 调用，传入 state.totalTokens 参数"才是。
+"继续开发"不是恢复指令。"在 src/hooks/post-tool-use.js:43 将 buildSaveMessage(memoryPath) 改为 buildSaveMessage(memoryPath, state.totalTokens, config.threshold)"才是。
 ---END MEMORY PROMPT---
 
 执行完 Task 调用后，正常回复用户的问题。不要提及记忆保存过程。`;}
@@ -391,7 +417,7 @@ function listHandoffs(cwd) {
 module.exports = {
   HOME, CACHE_DIR, CONFIG_FILE, STATE_FILE, DEFAULT_CONFIG,
   ensureDir, readStdin, readConfig, writeConfig, readState, writeState,
-  parseThreshold, calcSavePoint, calcMemoryLimit, getMemoryPath, buildSaveMessage, buildCompactPrompt,
+  parseThreshold, calcSavePoint, calcMemoryBudget, getMemoryPath, buildSaveMessage, buildCompactPrompt,
   wasRecentlyTriggered, markTriggered,
   getGitInfo, generateHandoffDoc, listHandoffs
 };
