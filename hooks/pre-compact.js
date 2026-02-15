@@ -17,7 +17,7 @@ async function main() {
 
   console.log(JSON.stringify({
     continue: true,
-    systemMessage: buildSaveMessage(memoryPath)
+    systemMessage: buildSaveMessage(memoryPath, state.totalTokens || 0)
   }));
 
   process.exit(0);
