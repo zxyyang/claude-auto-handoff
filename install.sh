@@ -107,7 +107,7 @@ fi
 
 # 6. 写入默认配置
 if [ ! -f "$HOME/.claude/cache/auto-handoff-config.json" ]; then
-  echo '{"enabled":true,"mode":"auto","threshold":"180k"}' > "$HOME/.claude/cache/auto-handoff-config.json"
+  echo '{"enabled":true,"mode":"auto","threshold":"200k"}' > "$HOME/.claude/cache/auto-handoff-config.json"
 fi
 
 echo ""

@@ -38,7 +38,7 @@ function readStdin() {
 const DEFAULT_CONFIG = {
   enabled: true,
   mode: 'auto',          // auto | manual
-  threshold: '70%',     // 支持 "180k"/"120k" 或 "80%"/"70%" 或用户自定义如 "150k"
+  threshold: '200k',     // 支持 "200k"/"120k" 或 "80%"/"70%" 或用户自定义如 "150k"
 };
 
 // 解析阈值字符串
