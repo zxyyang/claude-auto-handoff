@@ -1,7 +1,8 @@
 {
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "claude-auto-handoff",
-  "version": "1.0.0",
-  "description": "自动上下文交接插件 — 在上下文接近容量时自动保存记忆并引导无缝恢复",
+  "version": "3.1.0",
+  "description": "三层渐进式自动记忆保护 — 在上下文接近阈值时自动保存完整记忆，compact 后自动恢复，用户全程无感知",
   "author": {
     "name": "zxyyang",
     "url": "https://github.com/zxyyang"
@@ -9,7 +10,7 @@
   "homepage": "https://github.com/zxyyang/claude-auto-handoff",
   "repository": "https://github.com/zxyyang/claude-auto-handoff",
   "license": "MIT",
-  "keywords": ["context", "handoff", "memory", "auto-save", "中文"],
+  "keywords": ["context", "handoff", "memory", "auto-save", "progressive-disclosure", "three-layer"],
   "commands": ["./commands/"],
   "skills": ["./skills/"],
   "hooks": "./hooks/hooks.json"

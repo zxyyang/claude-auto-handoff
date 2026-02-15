@@ -1,24 +1,23 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "claude-auto-handoff",
+  "description": "三层渐进式自动记忆保护插件 — 解决 Claude Code 长会话记忆丢失问题",
   "owner": {
     "name": "zxyyang",
     "email": "zxyyang@users.noreply.github.com"
   },
-  "metadata": {
-    "description": "自动上下文交接插件 — 解决 Claude Code 长会话记忆丢失问题"
-  },
   "plugins": [
     {
       "name": "claude-auto-handoff",
-      "source": "./",
-      "description": "在上下文接近容量时自动保存完整记忆并引导无缝恢复，对用户完全透明无感",
+      "description": "三层渐进式自动记忆保护 — 在上下文接近阈值时自动保存完整记忆，compact 后自动恢复，用户全程无感知",
+      "version": "3.1.0",
       "author": { "name": "zxyyang" },
+      "source": "./",
       "homepage": "https://github.com/zxyyang/claude-auto-handoff",
       "repository": "https://github.com/zxyyang/claude-auto-handoff",
       "license": "MIT",
-      "keywords": ["context", "handoff", "memory", "auto-save"],
       "category": "workflow",
-      "tags": ["context-management", "memory", "handoff", "auto-save", "中文"]
+      "tags": ["context-management", "memory", "handoff", "auto-save", "progressive-disclosure"]
     }
   ]
 }

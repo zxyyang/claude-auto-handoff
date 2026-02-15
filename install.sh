@@ -8,7 +8,7 @@ REPO="https://github.com/zxyyang/claude-auto-handoff.git"
 MARKETPLACE_NAME="claude-auto-handoff"
 PLUGIN_NAME="claude-auto-handoff"
 PLUGIN_KEY="${PLUGIN_NAME}@${MARKETPLACE_NAME}"
-VERSION="1.0.0"
+VERSION="3.1.0"
 
 MARKETPLACE_DIR="$HOME/.claude/plugins/marketplaces/$MARKETPLACE_NAME"
 CACHE_DIR="$HOME/.claude/plugins/cache/$MARKETPLACE_NAME/$PLUGIN_NAME/$VERSION"
