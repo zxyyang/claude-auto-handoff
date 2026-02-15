@@ -38,7 +38,7 @@ function readStdin() {
 const DEFAULT_CONFIG = {
   enabled: true,
   mode: 'auto',          // auto | manual
-  threshold: '180k',     // 支持 "180k"/"120k" 或 "80%"/"70%" 或用户自定义如 "150k"
+  threshold: '70%',     // 支持 "180k"/"120k" 或 "80%"/"70%" 或用户自定义如 "150k"
 };
 
 // 解析阈值字符串
@@ -98,6 +98,57 @@ function readState() {
 function writeState(state) {
   ensureDir(CACHE_DIR);
   fs.writeFileSync(STATE_FILE, JSON.stringify({ ...state, ts: Date.now() }));
+}
+
+// ============ 记忆保护 ============
+
+/**
+ * 根据用户阈值计算保存点
+ * 百分比：pct - 15pp（如 70% → 55%）
+ * 绝对值：k * 0.75（如 30k → 22.5k）
+ */
+function calcSavePoint(threshold) {
+  const th = parseThreshold(threshold);
+  if (th.type === 'percent') {
+    return { type: 'percent', pct: Math.max(1, th.pct - 15), label: `${Math.max(1, th.pct - 15)}%` };
+  }
+  const saveK = Math.round(th.kTokens * 0.75);
+  return { type: 'absolute', kTokens: saveK, label: `${saveK}K` };
+}
+
+/**
+ * 会话级记忆文件路径（按项目+会话隔离）
+ */
+function getMemoryPath(cwd, sessionId) {
+  const short = String(sessionId || 'unknown').slice(0, 8);
+  const dir = path.join(cwd, '.claude');
+  ensureDir(dir);
+  return path.join(dir, `auto-handoff-memory-${short}.md`);
+}
+
+/**
+ * 构建「静默保存记忆」指令 — 使用后台 agent，不阻塞用户任务
+ */
+function buildSaveMessage(memoryPath) {
+  return `[AUTO-HANDOFF] 请立即使用 Task 工具启动一个后台 agent 保存会话记忆，不要阻塞当前回复。
+
+Task 参数：
+- subagent_type: "general-purpose"
+- run_in_background: true
+- description: "保存会话记忆"
+- prompt: "将以下会话记忆写入 ${memoryPath}（使用 Write 工具）：\\n\\n# 会话记忆快照\\n\\n## 当前任务和进度\\n[基于你对当前会话的理解填写]\\n\\n## 关键上下文\\n- 架构发现和代码约定\\n- 踩过的坑和解决方案\\n- 业务逻辑的关键理解\\n\\n## 已完成的工作和关键决策\\n[列出修改的文件和做出的决策]\\n\\n## 下一步待办\\n[按优先级列出 3-5 个具体可执行步骤]\\n\\n要求：简洁完整，不超过 200 行。"
+
+执行完 Task 调用后，正常回复用户的问题。不要提及记忆保存过程。`;}
+
+/**
+ * 构建「提示用户 compact」指令
+ */
+function buildCompactPrompt(info) {
+  return `
+
+在回复末尾另起一行，用以下格式提示用户：
+
+✅ 已保存完整会话记忆（${info}）。输入 /compact 压缩上下文（压缩后自动恢复记忆），或继续当前工作。`;
 }
 
 // ============ Transcript 检测 ============
@@ -264,6 +315,7 @@ function listHandoffs(cwd) {
 module.exports = {
   HOME, CACHE_DIR, CONFIG_FILE, STATE_FILE, DEFAULT_CONFIG,
   ensureDir, readStdin, readConfig, writeConfig, readState, writeState,
-  parseThreshold, wasRecentlyTriggered, markTriggered,
+  parseThreshold, calcSavePoint, getMemoryPath, buildSaveMessage, buildCompactPrompt,
+  wasRecentlyTriggered, markTriggered,
   getGitInfo, generateHandoffDoc, listHandoffs
 };

@@ -10,7 +10,7 @@
             "timeout": 3
           }
         ],
-        "description": "静默写入默认交接配置"
+        "description": "初始化配置 + compact 后自动恢复记忆"
       }
     ],
     "Stop": [
@@ -20,10 +20,36 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/stop.js\"",
-            "timeout": 10
+            "timeout": 5
           }
         ],
-        "description": "检查上下文大小，超阈值自动触发交接"
+        "description": "状态管理：检测交接失败"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/post-tool-use.js\"",
+            "timeout": 5
+          }
+        ],
+        "description": "达到保存点时保存记忆并提示用户 /compact"
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/user-prompt-submit.js\"",
+            "timeout": 3
+          }
+        ],
+        "description": "补充阈值检测（纯对话场景）"
       }
     ],
     "PreCompact": [
@@ -36,7 +62,7 @@
             "timeout": 10
           }
         ],
-        "description": "compact 前无条件触发交接（最后防线）"
+        "description": "compact 前无条件保存记忆（最后防线）"
       }
     ]
   }
