@@ -3,7 +3,7 @@
  * UserPromptSubmit hook — 用户提交消息时运行
  * 覆盖纯对话场景（无工具调用时 PostToolUse 不触发）
  */
-const { readStdin, readConfig, readState, writeState, parseThreshold, calcSavePoint, getMemoryPath, buildSaveMessage, buildCompactPrompt, wasRecentlyTriggered, markTriggered } = require('../scripts/lib');
+const { readStdin, readConfig, readState, writeState, parseThreshold, calcSavePoint, getMemoryPath, buildSaveMessage, wasRecentlyTriggered, markTriggered } = require('../scripts/lib');
 
 async function main() {
   const input = await readStdin();
@@ -40,7 +40,7 @@ async function main() {
   markTriggered(sessionId);
   writeState({ ...state, status: 'saved', memoryPath, sessionId });
 
-  const message = buildSaveMessage(memoryPath) + buildCompactPrompt(triggerInfo);
+  const message = buildSaveMessage(memoryPath);
 
   console.log(JSON.stringify({
     hookSpecificOutput: {

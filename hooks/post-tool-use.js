@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * PostToolUse hook — 每次工具调用后运行
- * 达到保存点 → 静默保存记忆 + 提示用户 /compact
+ * 达到保存点 → 静默保存记忆（压缩提醒由状态栏显示）
  */
-const { readStdin, readConfig, readState, writeState, parseThreshold, calcSavePoint, getMemoryPath, buildSaveMessage, buildCompactPrompt, wasRecentlyTriggered, markTriggered } = require('../scripts/lib');
+const { readStdin, readConfig, readState, writeState, parseThreshold, calcSavePoint, getMemoryPath, buildSaveMessage, wasRecentlyTriggered, markTriggered } = require('../scripts/lib');
 
 async function main() {
   const input = await readStdin();
@@ -40,7 +40,7 @@ async function main() {
   markTriggered(sessionId);
   writeState({ ...state, status: 'saved', memoryPath, sessionId });
 
-  const message = buildSaveMessage(memoryPath) + buildCompactPrompt(triggerInfo);
+  const message = buildSaveMessage(memoryPath);
 
   console.log(JSON.stringify({
     hookSpecificOutput: {
