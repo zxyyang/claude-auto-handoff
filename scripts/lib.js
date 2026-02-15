@@ -118,12 +118,53 @@ function calcSavePoint(threshold) {
 
 /**
  * 会话级记忆文件路径（按项目+会话隔离）
+ * index 文件 — 精华摘要，SessionStart 自动注入
  */
 function getMemoryPath(cwd, sessionId) {
   const short = String(sessionId || 'unknown').slice(0, 8);
   const dir = path.join(cwd, '.claude');
   ensureDir(dir);
   return path.join(dir, `auto-handoff-memory-${short}.md`);
+}
+
+/**
+ * full 记忆文件路径 — 完整详细记忆，按需读取
+ */
+function getMemoryFullPath(cwd, sessionId) {
+  const short = String(sessionId || 'unknown').slice(0, 8);
+  const dir = path.join(cwd, '.claude');
+  ensureDir(dir);
+  return path.join(dir, `auto-handoff-memory-${short}-full.md`);
+}
+
+/**
+ * observation 日志路径 — 原始操作记录，按需读取
+ */
+function getObsPath(cwd, sessionId) {
+  const short = String(sessionId || 'unknown').slice(0, 8);
+  const dir = path.join(cwd, '.claude');
+  ensureDir(dir);
+  return path.join(dir, `auto-handoff-obs-${short}.jsonl`);
+}
+
+/**
+ * 追加一条 observation 到 JSONL 文件（同步，不阻塞）
+ * 参考 claude-mem 的 PostToolUse observation 捕获
+ */
+function appendObservation(obsPath, toolName, toolInput, toolOutput) {
+  try {
+    const truncate = (s, max) => {
+      s = String(s || '');
+      return s.length > max ? s.slice(0, max) + '...[truncated]' : s;
+    };
+    const obs = {
+      ts: Date.now(),
+      tool: toolName,
+      input: truncate(typeof toolInput === 'object' ? JSON.stringify(toolInput) : toolInput, 300),
+      output: truncate(typeof toolOutput === 'object' ? JSON.stringify(toolOutput) : toolOutput, 800),
+    };
+    fs.appendFileSync(obsPath, JSON.stringify(obs) + '\n');
+  } catch {}
 }
 
 /**
@@ -145,14 +186,22 @@ function calcMemoryBudget(totalTokens, threshold) {
 }
 
 /**
- * 构建「静默保存记忆」指令 — 使用后台 agent，不阻塞用户任务
- * @param {string} memoryPath - 记忆文件路径
+ * 构建「静默保存记忆」指令 — 三层渐进式记忆架构
+ * Layer 1: index 文件（精华摘要，SessionStart 自动注入）
+ * Layer 2: full 文件（完整详细记忆，按需读取）
+ * Layer 3: observation 日志（原始操作记录，按需读取）
+ *
+ * @param {string} memoryPath - index 记忆文件路径
  * @param {number} totalTokens - 模型上下文总量
  * @param {string} threshold - 用户配置的阈值
+ * @param {string} cwd - 工作目录
+ * @param {string} sessionId - 会话 ID
  */
-function buildSaveMessage(memoryPath, totalTokens, threshold) {
+function buildSaveMessage(memoryPath, totalTokens, threshold, cwd, sessionId) {
   const budget = calcMemoryBudget(totalTokens, threshold);
   const approxLines = Math.round(budget / 33);
+  const fullPath = getMemoryFullPath(cwd || process.cwd(), sessionId || 'unknown');
+  const obsPath = getObsPath(cwd || process.cwd(), sessionId || 'unknown');
   return `[AUTO-HANDOFF] 请立即使用 Task 工具启动一个后台 agent 保存会话记忆，不要阻塞当前回复。
 
 Task 参数：
@@ -162,32 +211,32 @@ Task 参数：
 - prompt: 内容见下方
 
 ---BEGIN MEMORY PROMPT---
-将当前会话的完整记忆写入 ${memoryPath}（使用 Write 工具，如果内容超过 150 行则先 Write 前 50 行再用 Edit 追加）。
+你需要写入两个记忆文件，实现三层渐进式记忆（参考 claude-mem 架构）。
 
-## 预算
+操作日志（Layer 3）已自动捕获在：${obsPath}
+请先用 Read 工具读取该文件，了解本次会话的完整操作历史，然后基于操作日志 + 你对会话的理解写入以下两个文件。
 
-你有 ${budget} tokens（约 ${approxLines} 行）的记忆预算。尽可能写满，宁可多写也不要遗漏任何重要信息。
+## 文件 1: 完整记忆（Layer 2）
+路径：${fullPath}
+预算：${budget} tokens（约 ${approxLines} 行），尽可能写满
 
-## 核心目标
+这是完整的会话记忆，恢复后按需读取。按以下 8 段结构写入，全部必填，越详细越好：
 
-恢复后和没压缩一样，零信息丢失。这不是摘要，是完整的会话记忆快照。
+### 写入原则
+1. 提取原始数据 — 贴实际代码而非"修改了代码"，贴完整错误信息而非"遇到了错误"
+2. 保留因果链 — "因为 X 所以做了 Y，导致 Z"
+3. 保留用户原始指令和反馈
+4. 文件操作记录路径和关键内容
 
-## 写入原则（参考 claude-mem 的 observation 理念）
+### 8 段结构
 
-1. 提取原始数据，不要泛泛总结 — 贴实际代码而非"修改了代码"，贴完整错误信息而非"遇到了错误"
-2. 保留因果链 — 不只记录结果，记录"因为 X 所以做了 Y，导致 Z"
-3. 保留用户的原始指令和关键反馈 — 用户说的原话比你的理解更重要
-4. 文件操作要记录路径和关键内容 — 读了什么文件、改了哪些行、写入了什么
-
-## 记忆结构（8 段，全部必填）
-
-# 会话记忆快照
+# 会话记忆（完整版）
 
 ## 1. 当前任务和进度
-用 3-5 句话描述：正在做什么、整体目标、当前进度、在哪里停下的、为什么停下。
+3-5 句话：正在做什么、整体目标、当前进度、在哪里停下的、为什么停下。
 
 ## 2. 关键上下文 — 架构和约定
-compact 后靠这段恢复全局理解，要极度详细：
+极度详细，compact 后靠这段恢复全局：
 - 项目架构（目录结构、模块关系、数据流）
 - 代码约定（命名规则、设计模式、配置方式）
 - 业务逻辑（核心流程、边界条件、隐含假设）
@@ -195,49 +244,68 @@ compact 后靠这段恢复全局理解，要极度详细：
 - 关键文件的作用和相互关系
 
 ## 3. 已完成的工作
-列出本次会话完成的所有工作，每项包括：
-- 修改的文件路径和具体行号
-- 具体改了什么（贴关键代码 diff，不是描述）
-- 为什么这样改
+每项：文件路径:行号 + 具体改动（贴代码 diff）+ 原因
 
 ## 4. 关键决策和原因
-每个重要决策：
-- 决策内容
-- 考虑过的其他方案
-- 最终选择的原因
-- 推翻这个决策会影响什么
+每个决策：内容 + 考虑的方案 + 选择原因 + 推翻影响
 
-## 5. 失败的尝试和踩坑（极其重要）
-防止重复犯错，每个失败记录：
-- 试了什么方案
-- 完整的错误信息（贴原文，不要截断）
-- 为什么失败（根因分析）
-- 最终如何绕过或解决
-- 看起来可行但实际有坑的路径
+## 5. 失败的尝试和踩坑
+每个失败：方案 + 完整错误信息 + 根因 + 解决方式
 
 ## 6. 关键代码片段和接口
-直接贴代码（用 markdown 代码块，标注文件路径:行号）：
-- 核心函数的完整签名和关键实现
-- 重要的数据结构和接口定义
-- 关键配置项和环境变量
-- API 端点的请求/响应格式
-- hook 的输入输出格式
+直接贴代码（代码块 + 文件路径:行号）：函数签名、数据结构、配置、API 格式
 
 ## 7. 当前状态
-- 什么功能已经能正常工作（附验证方式）
-- 什么功能还有问题（贴具体错误信息）
-- 测试状态（哪些通过、哪些失败、失败原因）
-- 未提交的改动（git status）
-- 运行时状态（配置文件内容、缓存状态）
+能用的功能 + 有问题的功能（贴错误）+ 测试状态 + git status
 
 ## 8. 恢复指令
-按优先级列出具体步骤，每步包括：
-- 要操作的文件路径和行号
-- 具体要做什么（贴代码或命令）
-- 预期结果
-- 可能遇到的问题和解决方案
+每步：文件路径:行号 + 具体操作（贴代码）+ 预期结果 + 可能的问题
 
-"继续开发"不是恢复指令。"在 src/hooks/post-tool-use.js:43 将 buildSaveMessage(memoryPath) 改为 buildSaveMessage(memoryPath, state.totalTokens, config.threshold)"才是。
+---
+
+## 文件 2: 精华摘要（Layer 1）
+路径：${memoryPath}
+限制：200 行以内（这个文件会在 compact 后自动注入上下文，要精炼）
+
+这是精华索引，compact 后自动注入。格式：
+
+# 会话记忆摘要
+
+## 任务
+[一句话描述当前任务和进度]
+
+## 架构要点
+- [每条一行，最关键的架构发现和约定]
+
+## 已完成
+- [文件路径] — [一句话说明改动]
+
+## 关键决策
+- [决策] — [原因]
+
+## 踩坑记录
+- [问题] — [解决方式]
+
+## 关键代码引用
+- [文件路径:行号] — [一句话说明]
+
+## 当前状态
+- 正常：[列出]
+- 异常：[列出 + 错误信息]
+
+## 下一步
+1. [文件路径:行号] — [具体操作]
+2. ...
+
+## 深度恢复
+完整记忆：${fullPath}
+操作日志：${obsPath}
+需要详细信息时用 Read 工具读取以上文件。
+
+---
+
+写入顺序：先写 full 文件（Write + Edit 追加），再写 index 文件（Write）。
+如果内容超过 150 行，先 Write 前 50 行再用 Edit 追加。
 ---END MEMORY PROMPT---
 
 执行完 Task 调用后，正常回复用户的问题。不要提及记忆保存过程。`;}
@@ -417,7 +485,9 @@ function listHandoffs(cwd) {
 module.exports = {
   HOME, CACHE_DIR, CONFIG_FILE, STATE_FILE, DEFAULT_CONFIG,
   ensureDir, readStdin, readConfig, writeConfig, readState, writeState,
-  parseThreshold, calcSavePoint, calcMemoryBudget, getMemoryPath, buildSaveMessage, buildCompactPrompt,
+  parseThreshold, calcSavePoint, calcMemoryBudget,
+  getMemoryPath, getMemoryFullPath, getObsPath, appendObservation,
+  buildSaveMessage, buildCompactPrompt,
   wasRecentlyTriggered, markTriggered,
   getGitInfo, generateHandoffDoc, listHandoffs
 };

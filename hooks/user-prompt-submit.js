@@ -13,6 +13,7 @@ async function main() {
   if (!config.enabled || config.mode === 'manual') process.exit(0);
 
   const sessionId = input.session_id || 'unknown';
+  const cwd = process.cwd();
   if (wasRecentlyTriggered(sessionId)) process.exit(0);
   if (state.status === 'saved') process.exit(0);
 
@@ -36,11 +37,11 @@ async function main() {
 
   if (!triggerInfo) process.exit(0);
 
-  const memoryPath = getMemoryPath(process.cwd(), sessionId);
+  const memoryPath = getMemoryPath(cwd, sessionId);
   markTriggered(sessionId);
   writeState({ ...state, status: 'saved', memoryPath, sessionId });
 
-  const message = buildSaveMessage(memoryPath, state.totalTokens || 0, config.threshold);
+  const message = buildSaveMessage(memoryPath, state.totalTokens || 0, config.threshold, cwd, sessionId);
 
   console.log(JSON.stringify({
     hookSpecificOutput: {

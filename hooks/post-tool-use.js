@@ -1,18 +1,26 @@
 #!/usr/bin/env node
 /**
  * PostToolUse hook — 每次工具调用后运行
- * 达到保存点 → 静默保存记忆（压缩提醒由状态栏显示）
+ * 1. 自动捕获 observation（参考 claude-mem）
+ * 2. 达到保存点 → 静默保存三层记忆
  */
-const { readStdin, readConfig, readState, writeState, parseThreshold, calcSavePoint, getMemoryPath, buildSaveMessage, wasRecentlyTriggered, markTriggered } = require('../scripts/lib');
+const { readStdin, readConfig, readState, writeState, parseThreshold, calcSavePoint, getMemoryPath, getObsPath, appendObservation, buildSaveMessage, wasRecentlyTriggered, markTriggered } = require('../scripts/lib');
 
 async function main() {
   const input = await readStdin();
   const config = readConfig();
   const state = readState();
+  const sessionId = input.session_id || 'unknown';
+  const cwd = process.cwd();
+
+  // Layer 3: 自动捕获 observation（每次工具调用都记录）
+  if (config.enabled && input.tool_name) {
+    const obsPath = getObsPath(cwd, sessionId);
+    appendObservation(obsPath, input.tool_name, input.tool_input, input.tool_response);
+  }
 
   if (!config.enabled || config.mode === 'manual') process.exit(0);
 
-  const sessionId = input.session_id || 'unknown';
   if (wasRecentlyTriggered(sessionId)) process.exit(0);
   if (state.status === 'saved') process.exit(0);
 
@@ -36,11 +44,11 @@ async function main() {
 
   if (!triggerInfo) process.exit(0);
 
-  const memoryPath = getMemoryPath(process.cwd(), sessionId);
+  const memoryPath = getMemoryPath(cwd, sessionId);
   markTriggered(sessionId);
   writeState({ ...state, status: 'saved', memoryPath, sessionId });
 
-  const message = buildSaveMessage(memoryPath, state.totalTokens || 0, config.threshold);
+  const message = buildSaveMessage(memoryPath, state.totalTokens || 0, config.threshold, cwd, sessionId);
 
   console.log(JSON.stringify({
     hookSpecificOutput: {

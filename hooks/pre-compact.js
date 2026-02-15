@@ -9,8 +9,9 @@ async function main() {
   const config = readConfig();
   const state = readState();
   const sessionId = input.session_id || 'unknown';
+  const cwd = process.cwd();
 
-  const memoryPath = getMemoryPath(process.cwd(), sessionId);
+  const memoryPath = getMemoryPath(cwd, sessionId);
 
   // 无论是否已保存，都再保存一次（compact 前最后机会）
   if (!wasRecentlyTriggered(sessionId)) markTriggered(sessionId);
@@ -18,7 +19,7 @@ async function main() {
 
   console.log(JSON.stringify({
     continue: true,
-    systemMessage: buildSaveMessage(memoryPath, state.totalTokens || 0, config.threshold)
+    systemMessage: buildSaveMessage(memoryPath, state.totalTokens || 0, config.threshold, cwd, sessionId)
   }));
 
   process.exit(0);
