@@ -1,5 +1,4 @@
 {
-  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "claude-auto-handoff",
   "description": "三层渐进式自动记忆保护插件 — 解决 Claude Code 长会话记忆丢失问题",
   "owner": {
