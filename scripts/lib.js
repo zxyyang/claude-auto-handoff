@@ -506,12 +506,6 @@ function compareVersions(a, b) {
 }
 
 function shouldCheckUpdate() {
-  try {
-    if (fs.existsSync(UPDATE_CHECK_FILE)) {
-      const data = JSON.parse(fs.readFileSync(UPDATE_CHECK_FILE, 'utf8'));
-      return (Date.now() - (data.ts || 0)) > UPDATE_CHECK_INTERVAL;
-    }
-  } catch {}
   return true;
 }
 
