@@ -480,6 +480,89 @@ function listHandoffs(cwd) {
     .sort((a, b) => b.filename.localeCompare(a.filename));
 }
 
+// ============ 版本更新检测 ============
+
+const UPDATE_CHECK_FILE = path.join(CACHE_DIR, 'auto-handoff-update-check.json');
+const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 小时
+
+function getLocalVersion() {
+  try {
+    const pluginJson = path.join(__dirname, '..', '.claude-plugin', 'plugin.json');
+    if (fs.existsSync(pluginJson)) {
+      return JSON.parse(fs.readFileSync(pluginJson, 'utf8')).version || '0.0.0';
+    }
+  } catch {}
+  return '0.0.0';
+}
+
+function compareVersions(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) < (pb[i] || 0)) return -1;
+    if ((pa[i] || 0) > (pb[i] || 0)) return 1;
+  }
+  return 0;
+}
+
+function shouldCheckUpdate() {
+  try {
+    if (fs.existsSync(UPDATE_CHECK_FILE)) {
+      const data = JSON.parse(fs.readFileSync(UPDATE_CHECK_FILE, 'utf8'));
+      return (Date.now() - (data.ts || 0)) > UPDATE_CHECK_INTERVAL;
+    }
+  } catch {}
+  return true;
+}
+
+function saveUpdateCheck(remoteVersion, hasUpdate) {
+  ensureDir(CACHE_DIR);
+  try {
+    fs.writeFileSync(UPDATE_CHECK_FILE, JSON.stringify({
+      ts: Date.now(),
+      remoteVersion: remoteVersion || null,
+      hasUpdate: !!hasUpdate,
+      localVersion: getLocalVersion()
+    }));
+  } catch {}
+}
+
+function getLastUpdateCheck() {
+  try {
+    if (fs.existsSync(UPDATE_CHECK_FILE)) {
+      return JSON.parse(fs.readFileSync(UPDATE_CHECK_FILE, 'utf8'));
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * 异步检查远程版本（非阻塞）
+ * 通过 HTTPS 获取 GitHub 上的 plugin.json
+ */
+function checkRemoteVersion(callback) {
+  try {
+    const https = require('https');
+    const url = 'https://raw.githubusercontent.com/zxyyang/claude-auto-handoff/main/.claude-plugin/plugin.json';
+    const req = https.get(url, { timeout: 5000 }, (res) => {
+      let data = '';
+      res.on('data', (c) => data += c);
+      res.on('end', () => {
+        try {
+          const remote = JSON.parse(data);
+          const remoteVer = remote.version || '0.0.0';
+          const localVer = getLocalVersion();
+          const hasUpdate = compareVersions(localVer, remoteVer) < 0;
+          saveUpdateCheck(remoteVer, hasUpdate);
+          callback(null, { localVersion: localVer, remoteVersion: remoteVer, hasUpdate });
+        } catch (e) { callback(e); }
+      });
+    });
+    req.on('error', (e) => callback(e));
+    req.on('timeout', () => { req.destroy(); callback(new Error('timeout')); });
+  } catch (e) { callback(e); }
+}
+
 // ============ 导出 ============
 
 module.exports = {
@@ -489,5 +572,6 @@ module.exports = {
   getMemoryPath, getMemoryFullPath, getObsPath, appendObservation,
   buildSaveMessage, buildCompactPrompt,
   wasRecentlyTriggered, markTriggered,
+  getLocalVersion, compareVersions, shouldCheckUpdate, saveUpdateCheck, getLastUpdateCheck, checkRemoteVersion,
   getGitInfo, generateHandoffDoc, listHandoffs
 };

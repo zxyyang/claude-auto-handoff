@@ -123,6 +123,7 @@ Claude 需要细节时自行 Read 对应文件
 | `/handoff-mode` | 切换自动↔手动模式 |
 | `/handoff-config <值>` | 修改阈值，如 `70%`、`180k`、`off` |
 | `/handoff-status` | 查看当前配置和状态 |
+| `/handoff-update` | 一键更新到最新版本 |
 
 ## 配置
 
